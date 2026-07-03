@@ -76,7 +76,8 @@ function CreateCabinForm() {
   });
 
   function onSubmit(data) {
-    mutate(data);
+    //把image字段的值从FileList对象转换为File对象，取第一个文件
+    mutate({ ...data, image: data.image[0] });
   }
 
   function onError(errors) {
@@ -150,7 +151,12 @@ function CreateCabinForm() {
       </FormRow>
 
       <FormRow label="Cabin photo">
-        <FileInput id="image" accept="image/*" />
+        <FileInput
+          id="image"
+          accept="image/*"
+          type="file"
+          {...register("image", { required: "This field is required" })}
+        />
       </FormRow>
 
       <FormRow>
