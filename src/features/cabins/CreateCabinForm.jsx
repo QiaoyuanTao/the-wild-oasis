@@ -1,83 +1,98 @@
-import { useForm } from "react-hook-form";
-import styled from "styled-components";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 
 import Input from "../../ui/Input";
 import Form from "../../ui/Form";
 import Button from "../../ui/Button";
 import FileInput from "../../ui/FileInput";
 import Textarea from "../../ui/Textarea";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import toast from "react-hot-toast";
-import { createCabin } from "../../services/apiCabins";
 import FormRow from "../../ui/FormRow";
 
-const FormRow2 = styled.div`
-  display: grid;
-  align-items: center;
-  grid-template-columns: 24rem 1fr 1.2fr;
-  gap: 2.4rem;
+import { useForm } from "react-hook-form";
+import { createEditCabin } from "../../services/apiCabins";
 
-  padding: 1.2rem 0;
+// 组件初始化，cabinToEdit 不传参时默认为空对象
+function CreateCabinForm({ cabinToEdit = {} }) {
+  // 解构 cabinToEdit：id 重命名为 editId，剩余属性（name, price, image 等）打包到 editValues
+  const { id: editId, ...editValues } = cabinToEdit;
+  // 根据 editId 是否存在判断当前是编辑模式还是新建模式
+  const isEditSession = Boolean(editId);
 
-  &:first-child {
-    padding-top: 0;
-  }
-
-  &:last-child {
-    padding-bottom: 0;
-  }
-
-  &:not(:last-child) {
-    border-bottom: 1px solid var(--color-grey-100);
-  }
-
-  &:has(button) {
-    display: flex;
-    justify-content: flex-end;
-    gap: 1.2rem;
-  }
-`;
-
-const Label = styled.label`
-  font-weight: 500;
-`;
-
-const Error = styled.span`
-  font-size: 1.4rem;
-  color: var(--color-red-700);
-`;
-function CreateCabinForm() {
-  const { register, handleSubmit, reset, getValues, formState } = useForm();
+  // 初始化 react-hook-form，注册表单字段、验证规则、默认值等
+  const { register, handleSubmit, reset, getValues, formState } = useForm({
+    // 编辑模式：表单预填充已有数据（editValues）
+    // 新建模式：表单默认值为空对象（各输入框空白）
+    defaultValues: isEditSession ? editValues : {},
+  });
+  // 从 formState 中解构出验证错误信息（用于显示表单校验提示）
   const { errors } = formState;
-
-  //获取react-qeury的客户端实例，用于后续手动让缓存失效（invalidate），强制重新获取数据
+  // 获取 TanStack Query 的 QueryClient 实例
+  // 用于在 mutation 成功后手动标记缓存过期，触发列表重新获取
   const queryClient = useQueryClient();
 
-  //useMutation是react-query的核心钩子，专门用于处理服务端数据的写操作
-  //useMutation用于处理写操作，区别于useQuery的读操作，useMutation返回一个mutate函数，用于触发写操作，isLoading用于捕获当前的加载状态
-  const { mutate, isLoading: isCreating } = useMutation({
-    //mutaionFn是一个函数，接收一个参数，这个参数就是我们在调用mutate函数时传入的参数，这里我们传入的是一个对象，包含了cabin的所有信息
-    //告诉react-query如何去创建一个新的cabin，这里我们调用了apiCabins.js中的createCabin函数，这个函数会向后端发送一个POST请求，创建一个新的cabin
-    //react-query会自动处理请求的状态，包括loading、error、success等状态，并且会缓存请求的结果，避免重复请求
-    mutationFn: createCabin,
-    //请求成功后的回调
+  // 配置 useMutation 处理"新建 Cabin"的后端写操作
+  // isLoading: isCreating 用于控制按钮加载状态和禁用
+  const { mutate: createCabin, isLoading: isCreating } = useMutation({
+    // 实际执行后端请求的 API 函数
+    // 调用 createCabin(data) 时，react-query 会自动执行 createEditCabin(data, undefined)
+    // 注意这里没传 id，所以后端走 insert（新建）分支
+    mutationFn: createEditCabin,
+    //请求成功后回调
     onSuccess: () => {
-      //显示成功提示
+      //提示成功信息
       toast.success("New cabin successfully created");
-      //让缓存失效，强制重新获取数据，这里我们让cabins的缓存失效，重新获取cabins的数据
+      // 让 cabins 列表的缓存失效，标记为"已过期"
+      // 页面上的 CabinList 组件会自动重新获取数据，无需刷新页面
       queryClient.invalidateQueries({ queryKey: ["cabins"] });
+      // 重置表单为初始状态（新建模式下 defaultValues 是 {}，所以清空）
       reset();
     },
-    //请求失败后的回调
+    //请求失败后回调
     onError: (error) => {
-      //显示错误提示，这里我们假设error是一个对象，包含了message属性，实际情况可能需要根据后端返回的错误格式进行调整
+      //显示后端返回的错误信息
       toast.error(error.message);
     },
   });
 
+  // 配置 useMutation 处理"编辑 Cabin"，逻辑与 createCabin 类似
+  // 区别：多传一个 id 参数，让后端走 update 分支而非 insert
+  const { mutate: editCabin, isLoading: isEditing } = useMutation({
+    // mutationFn 接收一个对象，解构出 newCabinData（用户修改后的表单数据）和 id
+    // 然后调用 createEditCabin(newCabinData, id)，传入两个参数
+    // 后端判断 id 存在，走 update（更新）逻辑
+    mutationFn: ({ newCabinData, id }) => createEditCabin(newCabinData, id),
+    onSuccess: () => {
+      toast.success("Cabin successfully edited");
+      queryClient.invalidateQueries({ queryKey: ["cabins"] });
+      reset();
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+  // 将新建（isCreating）和编辑（isEditing）的 loading 状态统一
+  // 只要有一个在进行中，isWorking 就是 true，用于禁用按钮、显示 loading
+  const isWorking = isCreating || isEditing;
+
   function onSubmit(data) {
-    //把image字段的值从FileList对象转换为File对象，取第一个文件
-    mutate({ ...data, image: data.image[0] });
+    // 处理图片字段：判断用户是否上传了新图片
+    //
+    // 原因：react-hook-form 对文件输入框的处理规则：
+    // - 编辑模式 + 用户没动文件框：data.image = 原来的 URL 字符串（来自 defaultValues）
+    // - 新建/编辑 + 用户选了新文件：data.image = FileList（浏览器收集的文件列表）
+    //
+    // 判断逻辑：
+    // - 如果是字符串 → 说明是旧图片 URL，原样保留传给后端
+    // - 如果不是字符串 → 说明是 FileList，取 [0] 拿到单个 File 对象
+    const image = typeof data.image === "string" ? data.image : data.image[0];
+
+    // 根据当前模式调用不同的 mutation
+    if (isEditSession)
+      // 编辑模式：把修改后的数据 + 要编辑的 id 一起传给后端
+      // 后端根据 id 判断走 update 分支
+      editCabin({ newCabinData: { ...data, image }, id: editId });
+    // 新建模式：只传表单数据（无 id），后端走 insert 分支
+    else createCabin({ ...data, image: image });
   }
 
   function onError(errors) {
@@ -90,7 +105,7 @@ function CreateCabinForm() {
         <Input
           type="text"
           id="name"
-          disabled={isCreating}
+          disabled={isWorking}
           {...register("name", {
             required: "This field is required",
             min: { value: 1, message: "Capacity should be at least 1" },
@@ -102,7 +117,7 @@ function CreateCabinForm() {
         <Input
           type="number"
           id="maxCapacity"
-          disabled={isCreating}
+          disabled={isWorking}
           {...register("maxCapacity", {
             required: "This field is required",
             min: { value: 1, message: "Capacity should be at least 1" },
@@ -114,7 +129,7 @@ function CreateCabinForm() {
         <Input
           type="number"
           id="regularPrice"
-          disabled={isCreating}
+          disabled={isWorking}
           {...register("regularPrice", {
             required: "This field is required",
             min: { value: 1, message: "Capacity should be at least 1" },
@@ -126,7 +141,7 @@ function CreateCabinForm() {
         <Input
           type="number"
           id="discount"
-          disabled={isCreating}
+          disabled={isWorking}
           defaultValue={0}
           {...register("discount", {
             required: "This field is required",
@@ -144,7 +159,7 @@ function CreateCabinForm() {
         <Textarea
           type="number"
           id="description"
-          disabled={isCreating}
+          disabled={isWorking}
           defaultValue=""
           {...register("description", { required: "This field is required" })}
         />
@@ -155,7 +170,9 @@ function CreateCabinForm() {
           id="image"
           accept="image/*"
           type="file"
-          {...register("image", { required: "This field is required" })}
+          {...register("image", {
+            required: isEditSession ? false : "This field is required",
+          })}
         />
       </FormRow>
 
@@ -164,7 +181,9 @@ function CreateCabinForm() {
         <Button variation="secondary" type="reset">
           Cancel
         </Button>
-        <Button disabled={isCreating}>Add cabin</Button>
+        <Button disabled={isWorking}>
+          {isEditSession ? "Edit cabin" : "Create new cabin"}
+        </Button>
       </FormRow>
     </Form>
   );
