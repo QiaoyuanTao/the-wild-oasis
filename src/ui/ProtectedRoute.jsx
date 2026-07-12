@@ -1,7 +1,7 @@
 import styled from "styled-components";
 import { useUser } from "../features/authentication/useUser";
 import Spinner from "./Spinner";
-import { replace, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 
 const FullPage = styled.div`
@@ -14,7 +14,7 @@ const FullPage = styled.div`
 function ProtectedRoute({ children }) {
   const navigate = useNavigate();
   //加载经过身份验证的用户
-  const { user, isLoading, isAuthenticated } = useUser();
+  const { isLoading, isAuthenticated } = useUser();
 
   //如果没有经过验证的用户 返回登陆页面
   useEffect(
@@ -32,7 +32,7 @@ function ProtectedRoute({ children }) {
       </FullPage>
     );
   //如果有用户 渲染应用
-  if (isAuthenticated) navigate("/login", { replace: true });
+  if (isAuthenticated) return children;
 }
 
 export default ProtectedRoute;
