@@ -42,7 +42,7 @@ export async function getBooking(id) {
     .from("bookings")
     .select("*, cabins(*), guests(*)")
     .eq("id", id)
-    .single();
+    .single(); //查询修饰符，返回一条记录，且直接为对象
 
   if (error) {
     console.error(error);
